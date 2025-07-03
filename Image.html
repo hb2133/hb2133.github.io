@@ -37,10 +37,14 @@
             height: 292px;
             margin: 0 auto;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .img-container img {
             max-width: 100%;
             max-height: 100%;
+            object-fit: contain;
         }
         .btn-group {
             margin: 10px 5px;
@@ -68,6 +72,11 @@
             color: white;
             border-color: #17a2b8;
         }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+            border-color: #dc3545;
+        }
         .btn:hover {
             opacity: 0.8;
         }
@@ -87,11 +96,13 @@
         }
         .modal-content {
             background-color: #fefefe;
-            margin: 15% auto;
+            margin: 5% auto;
             padding: 20px;
             border-radius: 5px;
-            width: 80%;
-            max-width: 500px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
         }
         .modal-footer {
             text-align: right;
@@ -103,15 +114,33 @@
             font-weight: bold;
             cursor: pointer;
         }
+        .saved-image-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .saved-image {
+            max-width: 326px;
+            max-height: 292px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        #canvas {
+            text-align: center;
+        }
+        #canvas canvas {
+            max-width: 100%;
+            max-height: 60vh;
+            object-fit: contain;
+        }
     </style>
 </head>
 <body>
     <h1>이미지 업로드</h1>
     
-    <div class="upload-container">
+    <div class="upload-container" id="uploadContainer">
         <h2>이미지를 선택하거나 드래그하세요</h2>
         <input type="file" id="imageInput" accept="image/*" style="display: none;">
-        <button class="upload-btn" onclick="document.getElementById('imageInput').click()">
+        <button class="upload-btn" id="uploadBtn" onclick="document.getElementById('imageInput').click()">
             이미지 선택
         </button>
         <div class="img-container">
@@ -119,9 +148,15 @@
         </div>
     </div>
 
+    <div class="saved-image-container" id="savedImageContainer" style="display: none;">
+        <img id="savedImage" class="saved-image" src="" alt="Saved Image">
+        <br><br>
+        <button class="btn btn-danger" onclick="deleteSavedImage()">삭제</button>
+    </div>
+
     <div class="docs-buttons">
         <div class="btn-group">
-            <button type="button" class="btn btn-primary" data-method="setDragMode" data-option="move" title="Move">
+            <button type="button" class="btn btn-primary" id="moveBtn" title="Move">
                 <span class="fa fa-arrows-alt"></span>
             </button>
         </div>
@@ -145,10 +180,10 @@
         </div>
 
         <div class="btn-group">
-            <button type="button" class="btn btn-primary" data-method="scaleX" data-option="-1" title="Flip Horizontal">
+            <button type="button" class="btn btn-primary" id="flipHorizontalBtn" title="Flip Horizontal">
                 <span class="fa fa-arrows-alt-h"></span>
             </button>
-            <button type="button" class="btn btn-primary" data-method="scaleY" data-option="-1" title="Flip Vertical">
+            <button type="button" class="btn btn-primary" id="flipVerticalBtn" title="Flip Vertical">
                 <span class="fa fa-arrows-alt-v"></span>
             </button>
         </div>
@@ -173,7 +208,7 @@
             <div id="canvas"></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
-                <a class="btn btn-primary" id="download" href="javascript:void(0);" download="cropped.jpg">저장</a>
+                <a class="btn btn-primary" id="download" href="javascript:void(0);" onclick="saveAndGoToIndex()">저장</a>
             </div>
         </div>
     </div>
@@ -182,7 +217,70 @@
     <script>
         const imageInput = document.getElementById('imageInput');
         const image = document.getElementById('image');
+        const uploadContainer = document.getElementById('uploadContainer');
+        const savedImageContainer = document.getElementById('savedImageContainer');
+        const savedImage = document.getElementById('savedImage');
+        const uploadBtn = document.getElementById('uploadBtn');
         let cropper;
+        let originalImageData = null;
+        let flipHorizontalState = 1;
+        let flipVerticalState = 1;
+
+        function saveAndGoToIndex() {
+            try {
+                const canvas = document.querySelector('#canvas canvas');
+                if (canvas) {
+                    // 이미지 품질을 낮춰서 용량 줄이기
+                    const imageData = canvas.toDataURL('image/jpeg', 0.7);
+                    
+                    // localStorage 용량 제한 확인
+                    const maxSize = 5 * 1024 * 1024; // 5MB
+                    if (imageData.length > maxSize) {
+                        // 더 낮은 품질로 다시 시도
+                        const compressedImageData = canvas.toDataURL('image/jpeg', 0.5);
+                        if (compressedImageData.length > maxSize) {
+                            alert('이미지가 너무 큽니다. 더 작은 이미지를 사용해주세요.');
+                            return;
+                        }
+                        localStorage.setItem('editedImage', compressedImageData);
+                    } else {
+                        localStorage.setItem('editedImage', imageData);
+                    }
+                    
+                    console.log('이미지가 저장되었습니다. index.html로 이동합니다.');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 100);
+                } else {
+                    console.error('Canvas를 찾을 수 없습니다.');
+                }
+            } catch (error) {
+                console.error('저장 중 오류가 발생했습니다:', error);
+                if (error.name === 'QuotaExceededError') {
+                    alert('저장 공간이 부족합니다. 브라우저 캐시를 정리하고 다시 시도해주세요.');
+                }
+            }
+        }
+
+        function initializeCropper() {
+            if (cropper) {
+                cropper.destroy();
+            }
+            
+            cropper = new Cropper(image, {
+                aspectRatio: 1,
+                viewMode: 1,
+                dragMode: 'move',
+                autoCropArea: 1,
+                restore: false,
+                guides: true,
+                center: true,
+                highlight: false,
+                cropBoxMovable: true,
+                cropBoxResizable: true,
+                toggleDragModeOnDblclick: false,
+            });
+        }
 
         imageInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -215,8 +313,6 @@
         });
 
         // 드래그 앤 드롭 기능
-        const uploadContainer = document.querySelector('.upload-container');
-        
         uploadContainer.addEventListener('dragover', function(e) {
             e.preventDefault();
             uploadContainer.style.borderColor = '#007bff';
@@ -276,6 +372,35 @@
             const modal = document.getElementById('getCroppedCanvasModal');
             if (event.target === modal) {
                 closeModal();
+            }
+        });
+
+        // Flip Horizontal 버튼 이벤트
+        document.getElementById('flipHorizontalBtn').addEventListener('click', function() {
+            if (cropper) {
+                flipHorizontalState *= -1;
+                cropper.scaleX(flipHorizontalState);
+            }
+        });
+
+        // Flip Vertical 버튼 이벤트
+        document.getElementById('flipVerticalBtn').addEventListener('click', function() {
+            if (cropper) {
+                flipVerticalState *= -1;
+                cropper.scaleY(flipVerticalState);
+            }
+        });
+
+        // Move 버튼 이벤트
+        document.getElementById('moveBtn').addEventListener('click', function() {
+            if (cropper) {
+                // 모든 변환 초기화
+                cropper.reset();
+                // 상태 변수들 초기화
+                flipHorizontalState = 1;
+                flipVerticalState = 1;
+                // 드래그 모드를 move로 설정
+                cropper.setDragMode('move');
             }
         });
     </script>
