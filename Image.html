@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>이미지 업로드</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -30,9 +32,76 @@
         .upload-btn:hover {
             background-color: #0056b3;
         }
-        #imagePreview {
+        .img-container {
+            width: 326px;
+            height: 292px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+        .img-container img {
             max-width: 100%;
+            max-height: 100%;
+        }
+        .btn-group {
+            margin: 10px 5px;
+            display: inline-block;
+        }
+        .btn {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+        .btn-info {
+            background-color: #17a2b8;
+            color: white;
+            border-color: #17a2b8;
+        }
+        .btn:hover {
+            opacity: 0.8;
+        }
+        .docs-buttons {
+            text-align: center;
             margin-top: 20px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 500px;
+        }
+        .modal-footer {
+            text-align: right;
+            margin-top: 20px;
+        }
+        .close {
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -45,19 +114,101 @@
         <button class="upload-btn" onclick="document.getElementById('imageInput').click()">
             이미지 선택
         </button>
-        <div id="imagePreview"></div>
+        <div class="img-container">
+            <img id="image" src="" alt="Picture" style="display: none;">
+        </div>
     </div>
 
+    <div class="docs-buttons">
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" data-method="setDragMode" data-option="move" title="Move">
+                <span class="fa fa-arrows-alt"></span>
+            </button>
+        </div>
+
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" data-method="zoom" data-option="0.1" title="Zoom In">
+                <span class="fa fa-search-plus"></span>
+            </button>
+            <button type="button" class="btn btn-primary" data-method="zoom" data-option="-0.1" title="Zoom Out">
+                <span class="fa fa-search-minus"></span>
+            </button>
+        </div>
+
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" data-method="rotate" data-option="-45" title="Rotate Left">
+                <span class="fa fa-undo-alt"></span>
+            </button>
+            <button type="button" class="btn btn-primary" data-method="rotate" data-option="45" title="Rotate Right">
+                <span class="fa fa-redo-alt"></span>
+            </button>
+        </div>
+
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" data-method="scaleX" data-option="-1" title="Flip Horizontal">
+                <span class="fa fa-arrows-alt-h"></span>
+            </button>
+            <button type="button" class="btn btn-primary" data-method="scaleY" data-option="-1" title="Flip Vertical">
+                <span class="fa fa-arrows-alt-v"></span>
+            </button>
+        </div>
+
+        <div class="btn-group">
+            <label class="btn btn-info" for="imageInput" title="Upload image file">
+                <span class="fa fa-upload"></span> 불러오기
+            </label>
+        </div>
+
+        <div class="btn-group">
+            <button type="button" class="btn btn-success" data-method="getCroppedCanvas" data-option="{ &quot;maxWidth&quot;: 4096, &quot;maxHeight&quot;: 4096 }">
+                저장
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal for cropped image -->
+    <div id="getCroppedCanvasModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="canvas"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
+                <a class="btn btn-primary" id="download" href="javascript:void(0);" download="cropped.jpg">저장</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
     <script>
         const imageInput = document.getElementById('imageInput');
-        const imagePreview = document.getElementById('imagePreview');
+        const image = document.getElementById('image');
+        let cropper;
 
         imageInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    imagePreview.innerHTML = `<img src="${e.target.result}" alt="미리보기">`;
+                    image.src = e.target.result;
+                    image.style.display = 'block';
+                    
+                    if (cropper) {
+                        cropper.destroy();
+                    }
+                    
+                    cropper = new Cropper(image, {
+                        aspectRatio: 1,
+                        viewMode: 1,
+                        dragMode: 'move',
+                        autoCropArea: 1,
+                        restore: false,
+                        guides: true,
+                        center: true,
+                        highlight: false,
+                        cropBoxMovable: true,
+                        cropBoxResizable: true,
+                        toggleDragModeOnDblclick: false,
+                    });
                 };
                 reader.readAsDataURL(file);
             }
@@ -85,6 +236,46 @@
                 imageInput.files = files;
                 const event = new Event('change');
                 imageInput.dispatchEvent(event);
+            }
+        });
+
+        // 버튼 이벤트 처리
+        document.querySelectorAll('[data-method]').forEach(button => {
+            button.addEventListener('click', function() {
+                const method = this.getAttribute('data-method');
+                const option = this.getAttribute('data-option');
+                
+                if (cropper) {
+                    if (method === 'getCroppedCanvas') {
+                        const canvas = cropper.getCroppedCanvas(JSON.parse(option));
+                        const modal = document.getElementById('getCroppedCanvasModal');
+                        const canvasContainer = document.getElementById('canvas');
+                        canvasContainer.innerHTML = '';
+                        canvasContainer.appendChild(canvas);
+                        modal.style.display = 'block';
+                        
+                        const downloadLink = document.getElementById('download');
+                        downloadLink.href = canvas.toDataURL();
+                    } else {
+                        cropper[method](JSON.parse(option));
+                    }
+                }
+            });
+        });
+
+        // 모달 닫기
+        function closeModal() {
+            document.getElementById('getCroppedCanvasModal').style.display = 'none';
+        }
+
+        // X 버튼으로 모달 닫기
+        document.querySelector('.close').addEventListener('click', closeModal);
+
+        // 모달 외부 클릭으로 닫기
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('getCroppedCanvasModal');
+            if (event.target === modal) {
+                closeModal();
             }
         });
     </script>
